@@ -1,0 +1,114 @@
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+
+#define BUZZER_PIN 3     // Digital pin for buzzer
+#define MQ2_PIN A0       // Analog pin for MQ-2 sensor
+#define SERVO_PIN 6      // Pin for Servo motor
+#define ENA_PIN 9        // PWM pin for motor speed control (enable pin)
+#define IN1_PIN 10       // Input pin 1 for motor direction
+#define IN2_PIN 11       // Input pin 2 for motor direction
+
+// Threshold for gas detection
+const int GAS_THRESHOLD_SERVO = 100;  
+const int GAS_THRESHOLD_MEDIUM = 200;  
+const int GAS_THRESHOLD_HIGH = 500;
+
+// Initialize LCD (address 0x27, 16 chars, 2 lines)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+Servo windowServo;  // Servo object to control the window
+
+void setup() {
+  pinMode(BUZZER_PIN, OUTPUT);
+  pinMode(ENA_PIN, OUTPUT);  // Set the enable pin for the motor driver as output
+  pinMode(IN1_PIN, OUTPUT);   // Set input pin 1 as output
+  pinMode(IN2_PIN, OUTPUT);   // Set input pin 2 as output
+  Serial.begin(9600);
+  
+  // Initialize LCD
+  lcd.init();
+  lcd.backlight();
+  
+  // Attach servo motor to its pin
+  windowServo.attach(SERVO_PIN);
+  windowServo.write(0);  // Start with window closed (0 degrees)
+  
+  // Display startup message
+  lcd.setCursor(0, 0);
+  lcd.print("Gas Sensor");
+  lcd.setCursor(0, 1);
+  lcd.print("Warming up...");
+  
+  // Warm-up time for the MQ-2 sensor
+  Serial.println("MQ-2 warming up...");
+  delay(20000);  // 20 seconds warm-up time
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Sensor Ready!");
+  delay(2000);
+}
+
+void loop() {
+  // Read the analog value from MQ-2 sensor
+  int gasLevel = analogRead(MQ2_PIN);
+  
+  // Print gas level to Serial Monitor
+  Serial.print("Gas Level: ");
+  Serial.println(gasLevel);
+  
+  // Update LCD display
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("Gas Level: ");
+  lcd.print(gasLevel);
+  
+  // Check if gas level is above 100 for servo rotation
+  if (gasLevel > GAS_THRESHOLD_SERVO) {
+    windowServo.write(90);  // Rotate servo to 90 degrees (window opened)
+    Serial.println("Servo rotating: Window opened");
+  } else {
+    windowServo.write(0);  // Rotate servo to 0 degrees (window closed)
+    Serial.println("Servo rotating: Window closed");
+  }
+
+  // Motor speed control based on gas level
+  if (gasLevel > GAS_THRESHOLD_HIGH) {
+    // High gas level detected
+    tone(BUZZER_PIN, 1000);  // Activate buzzer at 1000 Hz
+    analogWrite(ENA_PIN, 0);  // Turn off motor
+    digitalWrite(IN1_PIN, LOW);  // Stop the motor
+    digitalWrite(IN2_PIN, LOW);  // Stop the motor
+    
+    // Display warning on LCD
+    lcd.setCursor(0, 1);
+    lcd.print("High Gas!       ");
+    Serial.println("High gas detected!");
+    
+  } else if (gasLevel > GAS_THRESHOLD_MEDIUM) {
+    // Medium gas level detected
+    tone(BUZZER_PIN, 1000);  // Activate buzzer at 1000 Hz
+    analogWrite(ENA_PIN, 128); // Set motor speed to 50% (128 out of 255)
+    digitalWrite(IN1_PIN, HIGH);  // Set motor direction
+    digitalWrite(IN2_PIN, LOW);   // Set motor direction
+    
+    // Display warning on LCD
+    lcd.setCursor(0, 1);
+    lcd.print("Medium Gas!     ");
+    Serial.println("Medium gas detected!");
+    
+  } else {
+    // Normal gas level, operates normally
+    noTone(BUZZER_PIN);  // Turn off buzzer
+    analogWrite(ENA_PIN, 255); // Set motor speed to maximum (255)
+    digitalWrite(IN1_PIN, HIGH);  // Set motor direction
+    digitalWrite(IN2_PIN, LOW);   // Set motor direction
+    
+    // Display normal message on LCD
+    lcd.setCursor(0, 1);
+    lcd.print("Normal Level    ");
+    Serial.println("Normal gas level.");
+  }
+  
+  delay(1000);  // Wait for a second before next reading
+}
